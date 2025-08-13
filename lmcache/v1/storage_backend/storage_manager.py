@@ -84,7 +84,10 @@ class StorageManager:
             )
         )
 
-        if config.enable_nixl:
+        # 优先使用GPU存储后端
+        if "GPUStorageBackend" in self.storage_backends:
+            self.allocator_backend = self.storage_backends["GPUStorageBackend"]
+        elif config.enable_nixl:
             self.allocator_backend = self.storage_backends["NixlBackend"]
         else:
             self.allocator_backend = self.storage_backends["LocalCPUBackend"]
@@ -211,8 +214,19 @@ class StorageManager:
             # Tune the timeout for better performance
             prefetch_task.result(timeout=1)
 
-        # Search all backends for blocking get
+        # 优先从GPU存储后端获取数据
+        if "GPUStorageBackend" in self.storage_backends:
+            gpu_backend = self.storage_backends["GPUStorageBackend"]
+            memory_obj = gpu_backend.get_blocking(key)
+            if memory_obj is not None:
+                # GPU存储后端直接返回GPU内存，无需write-back
+                return memory_obj
+        
+        # 从其他存储后端获取数据
         for backend_name, backend in self.storage_backends.items():
+            if backend_name == "GPUStorageBackend":
+                continue  # 已经检查过了
+            
             # NOTE(Jiayi): bypass the allocator for now
             memory_obj = backend.get_blocking(key)
             if memory_obj is not None:

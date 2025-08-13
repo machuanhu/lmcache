@@ -13,9 +13,11 @@
 # limitations under the License.
 
 # Standard
+import os
+import socket
+import threading
 from typing import List, Optional, no_type_check
 import asyncio
-import socket
 
 # Third Party
 import torch
@@ -25,7 +27,9 @@ from lmcache.logging import init_logger
 from lmcache.utils import CacheEngineKey, _lmcache_nvtx_annotate
 from lmcache.v1.memory_management import MemoryFormat, MemoryObj
 from lmcache.v1.protocol import ClientMetaMessage, Constants, ServerMetaMessage
-from lmcache.v1.storage_backend.connector.base_connector import RemoteConnector
+from lmcache.v1.storage_backend.connector.abstract_connector import (
+    RemoteConnector,
+)
 from lmcache.v1.storage_backend.local_cpu_backend import LocalCPUBackend
 
 logger = init_logger(__name__)
@@ -41,22 +45,15 @@ class LMCServerConnector(RemoteConnector):
         loop: asyncio.AbstractEventLoop,
         local_cpu_backend: LocalCPUBackend,
     ):
-        # NOTE(Jiayi): According to Python documentation:
-        # https://docs.python.org/3/library/asyncio-eventloop.html
-        # In general, protocol implementations that use transport-based APIs
-        # such as loop.create_connection() and loop.create_server() are faster
-        # than implementations that work with sockets.
-        # However, we use socket here as we need to use the socket.recv_into()
-        # to reduce memory copy.
-
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.client_socket.connect((host, port))
-        # loop.sock_recv_into(sock, buf)
-
+        self.async_socket_lock = asyncio.Lock()
         self.loop = loop
         self.local_cpu_backend = local_cpu_backend
-
-        self.async_socket_lock = asyncio.Lock()
+        
+        # 初始化rank信息
+        self.rank = int(os.getenv("LMCACHE_RANK", "0"))
+        self.world_size = int(os.getenv("LMCACHE_WORLD_SIZE", "1"))
 
     # TODO(Jiayi): This should be an async function
     def receive_all(self, meta: ServerMetaMessage) -> Optional[MemoryObj]:
@@ -97,6 +94,8 @@ class LMCServerConnector(RemoteConnector):
                     MemoryFormat(1),
                     torch.float16,
                     torch.Size([0, 0, 0, 0]),
+                    self.rank,  # source_rank
+                    0,  # target_rank
                 ).serialize()
             )
 
@@ -126,6 +125,8 @@ class LMCServerConnector(RemoteConnector):
                     memory_format,
                     kv_dtype,
                     kv_shape,
+                    self.rank,  # source_rank
+                    0,  # target_rank
                 ).serialize(),
             )
 
@@ -147,13 +148,22 @@ class LMCServerConnector(RemoteConnector):
                     MemoryFormat(1),
                     torch.float16,
                     torch.Size([0, 0, 0, 0]),
+                    self.rank,  # source_rank
+                    0,  # target_rank
                 ).serialize()
             )
 
             data = self.client_socket.recv(ServerMetaMessage.packlength())
 
         meta = ServerMetaMessage.deserialize(data)
-        if meta.code != Constants.SERVER_SUCCESS:
+        
+        # 检查是否是GPU传输响应
+        if meta.code == Constants.GPU_SUCCESS:
+            logger.debug("接收到GPU传输响应，使用NCCL接收数据")
+            # 这里需要集成NCCL管理器来接收GPU数据
+            # 暂时返回None，实际实现需要NCCL管理器
+            return None
+        elif meta.code != Constants.SERVER_SUCCESS:
             return None
 
         async with self.async_socket_lock:

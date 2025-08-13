@@ -146,6 +146,10 @@ class LMCacheEngineConfig:
     # When set, uses external lookup client instead of regular lookup server
     external_lookup_client: Optional[str] = None
 
+    # GPU Storage related configurations
+    enable_gpu_storage: bool = False  # whether to enable GPU storage
+    gpu_memory_gb: float = 8.0  # GPU memory size in GB
+
     @staticmethod
     def from_defaults(
         chunk_size: int = 256,
@@ -169,6 +173,8 @@ class LMCacheEngineConfig:
         lmcache_instance_id: str = "lmcache_default_instance",
         controller_url: Optional[str] = None,
         lmcache_worker_port: Optional[int] = None,
+        enable_gpu_storage: bool = False,
+        gpu_memory_gb: float = 8.0,
         enable_nixl: Optional[bool] = False,
         nixl_role: Optional[str] = None,
         nixl_receiver_host: Optional[str] = None,
@@ -214,6 +220,8 @@ class LMCacheEngineConfig:
             lmcache_instance_id,
             controller_url,
             lmcache_worker_port,
+            enable_gpu_storage,
+            gpu_memory_gb,
             enable_nixl,
             nixl_role,
             nixl_receiver_host,
@@ -409,6 +417,10 @@ class LMCacheEngineConfig:
 
         external_lookup_client = config.get("external_lookup_client", None)
 
+        # GPU Storage related configurations
+        enable_gpu_storage = config.get("enable_gpu_storage", False)
+        gpu_memory_gb = config.get("gpu_memory_gb", 8.0)
+
         local_disk_path = _parse_local_disk(local_disk)
 
         match remote_url:
@@ -463,6 +475,8 @@ class LMCacheEngineConfig:
                 save_unfull_chunk,
                 blocking_timeout_secs,
                 external_lookup_client,
+                enable_gpu_storage,
+                gpu_memory_gb,
             )
             .validate()
             .log_config()
@@ -583,6 +597,13 @@ class LMCacheEngineConfig:
             parse_env(get_env_name("lmcache_worker_port"), config.lmcache_worker_port)
         )
 
+        # GPU Storage related configurations
+        config.enable_gpu_storage = to_bool(
+            parse_env(get_env_name("enable_gpu_storage"), config.enable_gpu_storage)
+        )
+        config.gpu_memory_gb = to_float(
+            parse_env(get_env_name("gpu_memory_gb"), config.gpu_memory_gb)
+        )
         config.enable_nixl = to_bool(
             parse_env(get_env_name("enable_nixl"), config.enable_nixl)
         )
@@ -725,6 +746,8 @@ class LMCacheEngineConfig:
         config_dict = {
             "chunk_size": self.chunk_size,
             "cufile_buffer_size": self.cufile_buffer_size,
+            "enable_gpu_storage": self.enable_gpu_storage,
+            "gpu_memory_gb": self.gpu_memory_gb,
             "local_cpu": self.local_cpu,
             "max_local_cpu_size": f"{self.max_local_cpu_size} GB",
             "local_disk": self.local_disk,

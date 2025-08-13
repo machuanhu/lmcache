@@ -219,14 +219,13 @@ class UserSession:
         system_prompt = (
             f"Hi, here's some system prompt: {dummy_text_sys}."
             + f"For user {self.user_config.user_id}, "
-            + f"here are some other context: {dummy_text_user}."
+            + f"here are some other context: hi."
         )
         return system_prompt
 
     def _build_new_question(self):
-        self.question_id += 1
         return (
-            f"Here's question #{self.question_id}: can you tell me "
+            f"Here's question #{self.question_id + 1}: can you tell me "
             + "a new long story with a happy ending?"
         )
 
@@ -240,7 +239,6 @@ class UserSession:
                 prompt = self.sharegpt_data["conversations"][2 * self.question_id][
                     "value"
                 ]
-            self.question_id += 1
         else:
             prompt = self._build_new_question()
         if len(self.chat_history) == 0:
@@ -251,16 +249,27 @@ class UserSession:
         )
         if self.use_sharegpt:
             if self.start_with_gpt:
-                max_tokens = self.sharegpt_data["conversations"][2 * self.question_id][
-                    "num_tokens"
-                ]
+                # 当从GPT开始，我们需要获取GPT回复的num_tokens
+                conversation_index = 2 * self.question_id
+                if conversation_index < len(self.sharegpt_data["conversations"]):
+                    conversation = self.sharegpt_data["conversations"][conversation_index]
+                    max_tokens = conversation.get("num_tokens", self.user_config.answer_len)
+                else:
+                    max_tokens = self.user_config.answer_len
             else:
-                max_tokens = self.sharegpt_data["conversations"][
-                    2 * self.question_id - 1
-                ]["num_tokens"]
+                # 当从人类开始，我们需要获取下一个GPT回复的num_tokens
+                conversation_index = 2 * self.question_id - 1
+                if conversation_index < len(self.sharegpt_data["conversations"]):
+                    conversation = self.sharegpt_data["conversations"][conversation_index]
+                    max_tokens = conversation.get("num_tokens", self.user_config.answer_len)
+                else:
+                    max_tokens = self.user_config.answer_len
             max_tokens = min(max_tokens, self.user_config.answer_len)
         else:
             max_tokens = self.user_config.answer_len
+        # 在获取max_tokens之后再增加question_id
+        if self.use_sharegpt:
+            self.question_id += 1
         request_executor.launch_request(
             self.chat_history,
             max_tokens,
@@ -533,7 +542,7 @@ def warmup_engine(executor):
     for i in range(10):
         chat_history = ChatHistory()
         chat_history.on_user_query(
-            f"WARMUP: Hi, I'm user {i}. Here are some text: {'hi ' * 100}."
+            f"WARMUP: Hi, I'm user {i}. Here are some text: 'hi '."
         )
         executor.launch_request(chat_history, 100, lambda x: None)
 

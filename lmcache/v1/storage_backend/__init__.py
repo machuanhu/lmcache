@@ -55,6 +55,20 @@ def CreateStorageBackends(
 
     storage_backends: OrderedDict[str, StorageBackendInterface] = OrderedDict()
 
+    # 检查是否启用GPU存储
+    if hasattr(config, 'enable_gpu_storage') and config.enable_gpu_storage:
+        # First Party
+        from lmcache.v1.storage_backend.gpu_storage_backend import GPUStorageBackend
+        
+        gpu_backend = GPUStorageBackend(
+            config=config,
+            memory_allocator=None,  # 让 GPUStorageBackend 自己创建 GPUMemoryAllocator
+            lookup_server=lookup_server,
+            lmcache_worker=lmcache_worker,
+        )
+        storage_backends["GPUStorageBackend"] = gpu_backend
+        return storage_backends
+
     if config.enable_nixl:
         if config.enable_xpyd:
             # First Party

@@ -143,6 +143,7 @@ class ChunkedTokenDatabase(TokenDatabase):
         token_chunks: Iterable[Union[torch.Tensor, List[int]]],
     ) -> Iterable[int]:
         prefix_hash = self._get_init_hash()
+
         for token_chunk in token_chunks:
             prefix_hash = self._hash(token_chunk, prefix_hash)
             yield prefix_hash

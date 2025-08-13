@@ -36,6 +36,7 @@ class Constants:
 
     SERVER_SUCCESS = 200
     SERVER_FAIL = 400
+    GPU_SUCCESS = 201  # 新增：GPU显存传输成功状态码
 
 
 DTYPE_TO_INT = {
@@ -130,6 +131,8 @@ class ClientMetaMessage:
     fmt: MemoryFormat
     dtype: Optional[torch.dtype]
     shape: torch.Size
+    source_rank: int  # 新增：请求方rank
+    target_rank: int  # 新增：接收方rank
 
     def serialize(self) -> bytes:
         key_str = self.key.to_string()
@@ -142,7 +145,7 @@ class ClientMetaMessage:
         assert len(self.shape) == 4, "Shape dimension should be 4"
 
         packed_bytes = struct.pack(
-            f"iiiiiiii{MAX_KEY_LENGTH}s",
+            f"iiiiiiiiii{MAX_KEY_LENGTH}s",
             self.command,
             self.length,
             int(self.fmt.value),
@@ -151,14 +154,16 @@ class ClientMetaMessage:
             self.shape[1],
             self.shape[2],
             self.shape[3],
+            self.source_rank,  # 新增
+            self.target_rank,  # 新增
             key_str.encode().ljust(MAX_KEY_LENGTH),
         )
         return packed_bytes
 
     @staticmethod
     def deserialize(s: bytes) -> "ClientMetaMessage":
-        command, length, fmt, dtype, shape0, shape1, shape2, shape3, key = (
-            struct.unpack(f"iiiiiiii{MAX_KEY_LENGTH}s", s)
+        command, length, fmt, dtype, shape0, shape1, shape2, shape3, source_rank, target_rank, key = (
+            struct.unpack(f"iiiiiiiiii{MAX_KEY_LENGTH}s", s)
         )
         return ClientMetaMessage(
             command,
@@ -167,12 +172,14 @@ class ClientMetaMessage:
             MemoryFormat(fmt),
             INT_TO_DTYPE[dtype],
             torch.Size([shape0, shape1, shape2, shape3]),
+            source_rank,  # 新增
+            target_rank,  # 新增
         )
 
     @staticmethod
     def packlength() -> int:
-        # NOTE: 8 is the number of integers
-        return 4 * 8 + MAX_KEY_LENGTH
+        # NOTE: 10 is the number of integers (8 + 2 new rank fields)
+        return 4 * 10 + MAX_KEY_LENGTH
 
 
 @dataclass
@@ -186,11 +193,13 @@ class ServerMetaMessage:
     fmt: MemoryFormat
     dtype: Optional[torch.dtype]
     shape: torch.Size
+    source_rank: int  # 新增：请求方rank
+    target_rank: int  # 新增：接收方rank
 
     def serialize(self) -> bytes:
         assert len(self.shape) == 4, "Shape dimension should be 4"
         packed_bytes = struct.pack(
-            "iiiiiiii",
+            "iiiiiiiiii",
             self.code,
             self.length,
             int(self.fmt.value),
@@ -199,17 +208,19 @@ class ServerMetaMessage:
             self.shape[1],
             self.shape[2],
             self.shape[3],
+            self.source_rank,  # 新增
+            self.target_rank,  # 新增
         )
         return packed_bytes
 
     @staticmethod
     def packlength() -> int:
-        return 4 * 8
+        return 4 * 10  # 10 integers
 
     @staticmethod
     def deserialize(s: bytes) -> "ServerMetaMessage":
-        code, length, fmt, dtype, shape0, shape1, shape2, shape3 = struct.unpack(
-            "iiiiiiii", s
+        code, length, fmt, dtype, shape0, shape1, shape2, shape3, source_rank, target_rank = struct.unpack(
+            "iiiiiiiiii", s
         )
         return ServerMetaMessage(
             code,
@@ -217,4 +228,6 @@ class ServerMetaMessage:
             MemoryFormat(fmt),
             INT_TO_DTYPE[dtype],
             torch.Size([shape0, shape1, shape2, shape3]),
+            source_rank,  # 新增
+            target_rank,  # 新增
         )

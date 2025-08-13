@@ -410,12 +410,15 @@ class LMCacheEngine:
         :raises: ValueError if the number of Falses in the mask is not a
             multiple of the chunk size.
         """
+        import time
+        t_start = time.perf_counter()
+
         if mask is not None:
             num_required_tokens = torch.sum(mask).item()
         else:
             num_required_tokens = len(tokens)
         monitor_req_id = self.stats_monitor.on_retrieve_request(num_required_tokens)
-
+        logger.debug(f"num_required_tokens is {num_required_tokens} ")
         ret_mask = torch.zeros_like(tokens, dtype=torch.bool, device="cpu")
 
         key_mapping: Dict[str, List[CacheEngineKey]] = {}
@@ -443,23 +446,19 @@ class LMCacheEngine:
                     # TODO(Jiayi): Need to refactor P2P as a storage backend to
                     # clean up the following code.
                     if self.enable_p2p:
-                        future_memory_obj = asyncio.run_coroutine_threadsafe(
-                            self.distributed_server.issue_get(key),
-                            self.distributed_loop,
-                        )
-                        memory_obj = future_memory_obj.result()
+                        # 这里直接用 asyncio.run 执行协程，不再依赖已有的 event loop
+                        memory_obj = asyncio.run(self.distributed_server.issue_get(key))
                         reordered_keys.append(key)
                         reordered_memory_objs.append(memory_obj)
                         reordered_starts.append(start)
                         reordered_ends.append(end)
+                        ret_mask[start:end] = True
                         continue
                     break
-
                 # NOTE: Here we make the assumption that the underlying
                 # storage backend support pin operation, and the memory
                 # object is already pinned in the storage backend.
                 ret_mask[start:end] = True
-
                 if location not in key_mapping:
                     key_mapping[location] = [key]
                     start_mapping[location] = [start]
@@ -488,10 +487,11 @@ class LMCacheEngine:
         # cpu tensor for the sake of performance.
         # For example, disk->gpu is faster than disk->cpu->gpu.
         # RDMA is another example.
+        t_get = time.perf_counter()
         self.gpu_connector.batched_to_gpu(
             reordered_memory_objs, reordered_starts, reordered_ends, **kwargs
         )
-
+        t_gpu = time.perf_counter()
         # TODO(Jiayi): Remove the following for loop with batched operations
         for key, memory_obj in zip(reordered_keys, reordered_memory_objs, strict=False):
             memory_obj.ref_count_down()
@@ -506,7 +506,11 @@ class LMCacheEngine:
 
         retrieved_tokens = torch.sum(ret_mask)
         self.stats_monitor.on_retrieve_finished(monitor_req_id, retrieved_tokens)
+        t_end = time.perf_counter()
         logger.info(
+            f"获取操作总耗时: {(t_end - t_start) * 1000:.4f} ms | "
+            f"传输到vllm操作耗时: {(t_gpu - t_get) * 1000:.4f} ms | "
+            f"从外部获取操作耗时: {(t_gpu - t_start) * 1000:.4f} ms | "
             f"Retrieved {retrieved_tokens} "
             f"out of {num_required_tokens} "
             f"out of total {len(tokens)} tokens"

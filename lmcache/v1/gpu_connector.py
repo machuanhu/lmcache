@@ -216,15 +216,31 @@ class VLLMPagedMemGPUConnectorV2(GPUConnectorInterface):
 
         kv_cache_pointers = self._initialize_pointers(self.kvcaches)
 
-        lmc_ops.multi_layer_kv_transfer(
-            memory_obj.tensor,
-            kv_cache_pointers,
-            slot_mapping[start:end],
-            self.kvcaches[0].device,
-            self.page_buffer_size,
-            False,
-            self.use_mla,
-        )
+        # 检查memory_obj是否已经在GPU上
+        if memory_obj.tensor.device.type == "cuda":
+            # 直接GPU到GPU传输，无需CPU中转
+            lmc_ops.multi_layer_kv_transfer(
+                memory_obj.tensor,
+                kv_cache_pointers,
+                slot_mapping[start:end],
+                self.kvcaches[0].device,
+                self.page_buffer_size,
+                False,
+                self.use_mla,
+            )
+        else:
+            # 如果memory_obj在CPU上，需要先传输到GPU
+            # 这种情况应该避免，因为我们的GPU存储后端应该直接提供GPU内存
+            logger.warning("Memory object is on CPU, transferring to GPU first")
+            lmc_ops.multi_layer_kv_transfer(
+                memory_obj.tensor,
+                kv_cache_pointers,
+                slot_mapping[start:end],
+                self.kvcaches[0].device,
+                self.page_buffer_size,
+                False,
+                self.use_mla,
+            )
 
     @_lmcache_nvtx_annotate
     def from_gpu(self, memory_obj: MemoryObj, start: int, end: int, **kwargs):
@@ -259,8 +275,14 @@ class VLLMPagedMemGPUConnectorV2(GPUConnectorInterface):
 
         kv_cache_pointers = self._initialize_pointers(self.kvcaches)
 
+        # 确保memory_obj在GPU上
+        if memory_obj.tensor.device.type != "cuda":
+            logger.warning("Memory object is not on GPU, this should not happen with GPU storage backend")
+            # 将memory_obj移动到GPU
+
         with torch.cuda.stream(self.store_stream):
             if self.gpu_buffer is None or end - start != self.gpu_buffer.shape[2]:
+                # 直接GPU到GPU传输
                 lmc_ops.multi_layer_kv_transfer(
                     memory_obj.tensor,
                     kv_cache_pointers,
@@ -283,6 +305,7 @@ class VLLMPagedMemGPUConnectorV2(GPUConnectorInterface):
                     True,
                     self.use_mla,
                 )
+                # 直接GPU到GPU复制
                 memory_obj.tensor.copy_(tmp_gpu_buffer, non_blocking=True)
 
         if not memory_obj.tensor.is_cuda:

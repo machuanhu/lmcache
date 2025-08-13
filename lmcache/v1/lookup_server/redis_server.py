@@ -50,7 +50,7 @@ class RedisLookupServer(LookupServerInterface):
         """
         Perform lookup in the lookup server.
         """
-        logger.debug("Call to lookup in lookup server")
+        logger.debug(f"Call to lookup in lookup server for {key.to_string()}")
         url = self.connection.get(key.to_string())
         logger.debug(f"KV cache lives on {url}")
         assert not inspect.isawaitable(url)

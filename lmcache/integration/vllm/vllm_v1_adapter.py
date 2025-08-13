@@ -412,6 +412,13 @@ class LMCacheConnectorV1Impl:
 
         self.force_skip_save = bool(os.environ.get("LMCACHE_FORCE_SKIP_SAVE", False))
 
+        # GPU存储相关配置
+        self.enable_gpu_storage = bool(os.environ.get("LMCACHE_ENABLE_GPU_STORAGE", False))
+        self.gpu_memory_gb = float(os.environ.get("LMCACHE_GPU_MEMORY_GB", "8.0"))
+        self.enable_nvlink_transfer = bool(os.environ.get("LMCACHE_ENABLE_NVLINK_TRANSFER", True))
+        self.nvlink_local_address = os.environ.get("LMCACHE_NVLINK_LOCAL_ADDRESS", None)
+        self.nvlink_target_addresses = os.environ.get("LMCACHE_NVLINK_TARGET_ADDRESSES", None)
+
     def _init_kv_caches_from_forward_context(self, forward_context: "ForwardContext"):
         for layer_name in forward_context.no_compile_layers:
             attn_layer = forward_context.no_compile_layers[layer_name]
@@ -796,6 +803,7 @@ class LMCacheConnectorV1Impl:
                 token_ids[: -self.skip_last_n_tokens]
             )
         else:
+            logger.info("start look up")
             num_external_hit_tokens = self.lookup_client.lookup(token_ids)
 
         # When prompt length is divisible by the block size and all

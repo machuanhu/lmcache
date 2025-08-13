@@ -54,6 +54,7 @@ class LMCacheStats:
     local_cache_usage_bytes: int  # Size of the used local cache in bytes
     remote_cache_usage_bytes: int  # Size of the used remote cache in bytes
     local_storage_usage_bytes: int  # Size of the used local storage in bytes
+    gpu_cache_usage_bytes: int  # Size of the used GPU cache in bytes
 
     # Distribution measurements
     time_to_retrieve: List[float]
@@ -125,6 +126,7 @@ class LMCStatsMonitor:
         self.local_cache_usage_bytes = 0
         self.remote_cache_usage_bytes = 0
         self.local_storage_usage_bytes = 0
+        self.gpu_cache_usage_bytes = 0
 
         self.retrieve_requests: Dict[int, RetrieveRequestStats] = {}
         self.store_requests: Dict[int, StoreRequestStats] = {}
@@ -195,6 +197,10 @@ class LMCStatsMonitor:
     @thread_safe
     def update_local_storage_usage(self, usage: int):
         self.local_storage_usage_bytes = usage
+
+    @thread_safe
+    def update_gpu_cache_usage(self, usage: int):
+        self.gpu_cache_usage_bytes = usage
 
     @thread_safe
     def update_interval_remote_read_metrics(self, read_bytes: int):
@@ -298,6 +304,7 @@ class LMCStatsMonitor:
             local_cache_usage_bytes=self.local_cache_usage_bytes,
             remote_cache_usage_bytes=self.remote_cache_usage_bytes,
             local_storage_usage_bytes=self.local_storage_usage_bytes,
+            gpu_cache_usage_bytes=self.gpu_cache_usage_bytes,
             time_to_retrieve=time_to_retrieve,
             time_to_store=time_to_store,
             retrieve_speed=retrieve_speed,

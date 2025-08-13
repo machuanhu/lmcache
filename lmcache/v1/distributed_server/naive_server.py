@@ -18,6 +18,7 @@ import asyncio
 import socket
 import threading
 import time
+import os
 
 # Third Party
 import torch
@@ -29,6 +30,7 @@ from lmcache.v1.config import LMCacheEngineConfig
 from lmcache.v1.distributed_server.abstract_server import (  # noqa: E501
     DistributedServerInterface,
 )
+from lmcache.v1.distributed_server.nccl_manager import get_nccl_manager
 from lmcache.v1.lookup_server import LookupServerInterface
 from lmcache.v1.memory_management import MemoryFormat, MemoryObj
 from lmcache.v1.protocol import ClientMetaMessage, Constants, ServerMetaMessage
@@ -64,6 +66,13 @@ class NaiveDistributedServer(DistributedServerInterface):
         self.host = host
         self.port = int(port)
 
+        # 初始化rank信息
+        self.rank = int(os.getenv("LMCACHE_RANK", "0"))
+        self.world_size = int(os.getenv("LMCACHE_WORLD_SIZE", "1"))
+        
+        # 初始化NCCL管理器
+        self.nccl_manager = get_nccl_manager()
+
         self.loop = loop
         self.thread = threading.Thread(target=self.loop.run_forever)
         self.thread.start()
@@ -89,9 +98,13 @@ class NaiveDistributedServer(DistributedServerInterface):
     ) -> Optional[MemoryObj]:
         received = 0
         n = meta.length
+        logger.debug(f"received meta.length {meta.length}")
 
         # TODO(Jiayi): Format will be used once we support
         # compressed memory format
+        if meta.dtype is None:
+            logger.warning("meta.dtype is None, cannot allocate memory")
+            return None
         memory_obj = self.storage_manager.allocate(
             meta.shape,
             meta.dtype,
@@ -117,11 +130,15 @@ class NaiveDistributedServer(DistributedServerInterface):
         Perform get from the peer.
         This function can be blocking for now.
         """
+        import time
+        t_start = time.perf_counter()
         # `url` has the format host:port
         host_and_port = self.lookup_server.lookup(key)
         if host_and_port is None:
             return None
         host, port = host_and_port
+        t_lookup = time.perf_counter()
+        logger.info(f"lookup耗时: {t_lookup - t_start:.6f} 秒")
 
         # TODO(Jiayi): Cache the hot client sockets if possible.
         # For example, retrieving 100 chunks could create 100 the same
@@ -129,31 +146,63 @@ class NaiveDistributedServer(DistributedServerInterface):
         # However, too many live sockets could cause file descriptor exhaustion
         # (i.e., Too many open files).
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect((host, port))
-        logger.debug(f"Peer connection created at {host}:{port}")
+        try:
+            client_socket.connect((host, port))
+            logger.debug(f"Peer connection created at {host}:{port}")
+            t_connect = time.perf_counter()
+            logger.info(f"connect耗时: {t_connect - t_lookup:.6f} 秒")
+            async with self.async_socket_lock:
+                client_socket.sendall(
+                    ClientMetaMessage(
+                        Constants.CLIENT_GET,
+                        key,
+                        0,
+                        MemoryFormat(1),
+                        torch.float16,
+                        torch.Size([0, 0, 0, 0]),
+                        self.rank,  # 添加source_rank
+                        0,  # target_rank将在后续确定
+                    ).serialize()
+                )
+                data = client_socket.recv(ServerMetaMessage.packlength())
+            meta = ServerMetaMessage.deserialize(data)
+            t_deserialize = time.perf_counter()
+            logger.info(f"deserialize耗时: {t_deserialize - t_connect:.6f} 秒")
 
-        async with self.async_socket_lock:
-            client_socket.sendall(
-                ClientMetaMessage(
-                    Constants.CLIENT_GET,
-                    key,
-                    0,
-                    MemoryFormat(1),
-                    torch.float16,
-                    torch.Size([0, 0, 0, 0]),
-                ).serialize()
-            )
+            # 检查是否是GPU传输响应
+            if meta.code == Constants.GPU_SUCCESS:
+                logger.debug("接收到GPU传输响应，使用NCCL接收数据")
+                # 使用NCCL接收GPU数据
+                memory_obj = self.nccl_manager.recv_gpu_data(
+                    meta.source_rank,  # 从源rank接收
+                    meta.shape,
+                    meta.dtype,
+                    self.storage_manager  # 传入存储管理器
+                )
+                if memory_obj is not None:
+                    logger.debug(f"NCCL接收数据成功，数据长度: {len(memory_obj.byte_array)}")
+                t_end = time.perf_counter()
+                logger.info(f"NCCL接收数据耗时: {t_end - t_deserialize:.6f} 秒")
+                logger.info(f"issue_get整体耗时: {t_end - t_start:.6f} 秒")
+                return memory_obj
+            elif meta.code != Constants.SERVER_SUCCESS:
+                logger.debug(f"meta.code {meta.code}")
+                return None
 
-            data = client_socket.recv(ServerMetaMessage.packlength())
-
-        meta = ServerMetaMessage.deserialize(data)
-        if meta.code != Constants.SERVER_SUCCESS:
-            return None
-
-        async with self.async_socket_lock:
-            memory_obj = self.receive_all_client(meta, client_socket)
-
-        return memory_obj
+            async with self.async_socket_lock:
+                memory_obj = self.receive_all_client(meta, client_socket)
+            logger.debug(f"get kv cache success")
+            if memory_obj is not None:
+                logger.debug(f"received data length is {len(memory_obj.byte_array)}")
+            t_end = time.perf_counter()
+            logger.info(f"issue_get整体耗时: {t_end - t_start:.6f} 秒")
+            return memory_obj
+        finally:
+            try:
+                client_socket.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            client_socket.close()
 
     async def receive_all_server(self, reader, n):
         data = bytearray()
@@ -188,29 +237,68 @@ class NaiveDistributedServer(DistributedServerInterface):
                         t1 = time.perf_counter()
 
                         if memory_obj is not None:
-                            writer.write(
-                                ServerMetaMessage(
-                                    Constants.SERVER_SUCCESS,
-                                    len(memory_obj.byte_array),
-                                    memory_obj.get_memory_format(),
-                                    memory_obj.get_dtype(),
-                                    memory_obj.get_shape(),
-                                ).serialize()
-                            )
-                            await writer.drain()
+                            # 检查数据是否在GPU上且NCCL可用
+                            if (memory_obj.tensor.device.type == "cuda" and 
+                                self.nccl_manager.is_available() and
+                                meta.source_rank != self.rank):  # 避免自己给自己发送
+                                
+                                logger.debug(f"数据在GPU上，使用NCCL发送到rank {meta.source_rank}")
+                                
+                                # 发送GPU_SUCCESS响应
+                                writer.write(
+                                    ServerMetaMessage(
+                                        Constants.GPU_SUCCESS,
+                                        len(memory_obj.byte_array),
+                                        memory_obj.get_memory_format(),
+                                        memory_obj.get_dtype(),
+                                        memory_obj.get_shape(),
+                                        self.rank,  # source_rank (当前服务器)
+                                        meta.source_rank,  # target_rank (请求方)
+                                    ).serialize()
+                                )
+                                await writer.drain()
 
-                            t2 = time.perf_counter()
+                                t2 = time.perf_counter()
+                                
+                                # 使用NCCL发送GPU数据
+                                success = self.nccl_manager.send_gpu_data(memory_obj, meta.source_rank)
+                                if success:
+                                    logger.debug(f"NCCL发送数据成功到rank {meta.source_rank}")
+                                else:
+                                    logger.error(f"NCCL发送数据失败到rank {meta.source_rank}")
+                                
+                                memory_obj.ref_count_down()
 
-                            writer.write(memory_obj.byte_array)
-                            await writer.drain()
-                            memory_obj.ref_count_down()
+                                t3 = time.perf_counter()
+                                
+                            else:
+                                # 使用传统socket传输
+                                logger.debug(f"sended meta.length {len(memory_obj.byte_array)}")
+                                writer.write(
+                                    ServerMetaMessage(
+                                        Constants.SERVER_SUCCESS,
+                                        len(memory_obj.byte_array),
+                                        memory_obj.get_memory_format(),
+                                        memory_obj.get_dtype(),
+                                        memory_obj.get_shape(),
+                                        self.rank,  # source_rank
+                                        meta.source_rank,  # target_rank
+                                    ).serialize()
+                                )
+                                await writer.drain()
 
-                            t3 = time.perf_counter()
+                                t2 = time.perf_counter()
+
+                                writer.write(memory_obj.byte_array)
+                                await writer.drain()
+                                memory_obj.ref_count_down()
+
+                                t3 = time.perf_counter()
                             logger.info(
-                                f"Time to get data: {t1 - t0}, "
-                                f"time to send meta: {t2 - t1}, "
-                                f"time to send data: {t3 - t2}"
-                            )
+                                    f"Time to get data: {t1 - t0}, "
+                                    f"time to send meta: {t2 - t1}, "
+                                    f"time to send data: {t3 - t2}"
+                                )   
                         else:
                             writer.write(
                                 ServerMetaMessage(
@@ -219,12 +307,25 @@ class NaiveDistributedServer(DistributedServerInterface):
                                     MemoryFormat(1),
                                     torch.float16,
                                     torch.Size((0, 0, 0, 0)),
+                                    self.rank,  # source_rank
+                                    meta.source_rank,  # target_rank
                                 ).serialize()
                             )
                             await writer.drain()
+        except ConnectionResetError as e:
+            logger.warning(f"Connection reset by peer for {addr}: {e}")
+        except ConnectionAbortedError as e:
+            logger.warning(f"Connection aborted for {addr}: {e}")
+        except BrokenPipeError as e:
+            logger.warning(f"Broken pipe for {addr}: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error handling client {addr}: {e}")
         finally:
-            writer.close()
-            await writer.wait_closed()
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception as e:
+                logger.debug(f"Error closing writer for {addr}: {e}")
 
     async def start(self):
         """
@@ -245,3 +346,7 @@ class NaiveDistributedServer(DistributedServerInterface):
             self.loop.call_soon_threadsafe(self.loop.stop)
         if self.thread.is_alive():
             self.thread.join()
+        
+        # 关闭NCCL管理器
+        if hasattr(self, 'nccl_manager'):
+            self.nccl_manager.close()

@@ -1,0 +1,10 @@
+chunk_size: 256
+local_cpu: false
+enable_gpu_storage: true
+gpu_memory_gb: 5
+max_local_cpu_size: 8
+
+# P2P configuration
+enable_p2p: true
+lookup_url: "localhost:6379"
+distributed_url: "localhost:8201"

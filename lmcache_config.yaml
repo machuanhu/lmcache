@@ -1,0 +1,9 @@
+chunk_size: 256
+local_cpu: true
+enable_gpu_storage: true
+gpu_memory_gb: 5
+remote_url: "lm://localhost:65432"
+remote_serde: "cachegen"
+
+# Whether retrieve() is pipelined or not
+pipelined_backend: false

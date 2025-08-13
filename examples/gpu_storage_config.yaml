@@ -1,0 +1,29 @@
+# LMCache GPU存储配置示例
+# 此配置文件展示了如何启用GPU显存存储和NVLink传输
+
+# 基本配置
+chunk_size: 256  # KV cache chunk大小（token数量）
+local_cpu: false  # 禁用CPU存储
+max_local_cpu_size: 0.0  # CPU存储大小为0
+
+# GPU存储配置
+enable_gpu_storage: true  # 启用GPU存储
+gpu_memory_gb: 8.0  # GPU内存使用量（GB）
+enable_nvlink_transfer: true  # 启用NVLink传输
+
+# NVLink传输配置
+nvlink_local_address: "localhost:5555"  # 本地地址
+nvlink_target_addresses:  # 目标地址列表
+  - "192.168.1.100:5555"  # 其他LMCache实例地址
+  - "192.168.1.101:5555"
+
+# 其他配置
+use_layerwise: false  # 是否使用分层流水线
+save_decode_cache: false  # 是否保存解码缓存
+enable_blending: false  # 是否启用混合
+enable_p2p: false  # 是否启用P2P共享
+error_handling: true  # 启用错误处理
+
+# 控制器配置
+enable_controller: false
+lmcache_instance_id: "gpu_storage_instance" 
