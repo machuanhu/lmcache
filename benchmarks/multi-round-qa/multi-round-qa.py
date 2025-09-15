@@ -41,6 +41,9 @@ class WorkloadConfig:
     # Whether to include user id in request header
     enable_user_id: bool
 
+    # Number of conversations to batch together (new parameter)
+    batch_conversations: int = 1
+
 
 @dataclass
 class UserConfig:
@@ -65,6 +68,9 @@ class UserConfig:
     # Whether to include user id in request header
     enable_user_id: bool
 
+    # Number of conversations to batch together
+    batch_conversations: int
+
     @staticmethod
     def new_user_config(user_id: int, workload_config: WorkloadConfig) -> "UserConfig":
         return UserConfig(
@@ -75,6 +81,7 @@ class UserConfig:
             gap_between_requests=workload_config.num_users / workload_config.qps,
             num_rounds=workload_config.num_rounds,
             enable_user_id=workload_config.enable_user_id,
+            batch_conversations=workload_config.batch_conversations,
         )
 
 
@@ -229,47 +236,113 @@ class UserSession:
             + "a new long story with a happy ending?"
         )
 
-    def _launch_new_request(self, timestamp: float, request_executor: RequestExecutor):
-        if self.use_sharegpt:
+    def _build_batched_sharegpt_prompt(self):
+        """构建包含多个conversation的合并prompt"""
+        if not self.use_sharegpt:
+            return self._build_new_question()
+        
+        batch_size = self.user_config.batch_conversations
+        start_idx = self.question_id * batch_size
+        
+        # 检查是否有足够的数据
+        if start_idx >= len(self.sharegpt_data["conversations"]):
+            return None
+        
+        # 构建合并的prompt
+        batched_prompt = ""
+        total_max_tokens = 0
+        
+        for i in range(batch_size):
+            conv_idx = start_idx + i
+            if conv_idx >= len(self.sharegpt_data["conversations"]):
+                break
+                
+            conversation = self.sharegpt_data["conversations"][conv_idx]
             if self.start_with_gpt:
-                prompt = self.sharegpt_data["conversations"][2 * self.question_id + 1][
-                    "value"
-                ]
+                # 如果从GPT开始，跳过第一个GPT回复，从人类问题开始
+                if conv_idx % 2 == 0:  # GPT回复
+                    continue
             else:
-                prompt = self.sharegpt_data["conversations"][2 * self.question_id][
-                    "value"
-                ]
+                # 如果从人类开始，跳过第一个人类问题，从GPT回复开始
+                if conv_idx % 2 == 1:  # 人类问题
+                    continue
+            
+            # 添加conversation内容
+            batched_prompt += f"\n\n--- Conversation {i+1} ---\n"
+            batched_prompt += conversation["value"]
+            
+            # 累加token数量
+            total_max_tokens += conversation.get("num_tokens", self.user_config.answer_len)
+        
+        if not batched_prompt.strip():
+            return None
+            
+        # 添加指令
+        instruction = f"\n\nPlease respond to all {batch_size} conversations above. Provide comprehensive answers for each conversation."
+        batched_prompt = instruction + batched_prompt
+        
+        return batched_prompt, total_max_tokens
+
+    def _launch_new_request(self, timestamp: float, request_executor: RequestExecutor):
+        if self.use_sharegpt and self.user_config.batch_conversations > 1:
+            # 使用批量模式
+            result = self._build_batched_sharegpt_prompt()
+            if result is None:
+                self.finished = True
+                return
+            prompt, max_tokens = result
         else:
-            prompt = self._build_new_question()
+            # 使用原始模式
+            if self.use_sharegpt:
+                if self.start_with_gpt:
+                    prompt = self.sharegpt_data["conversations"][2 * self.question_id + 1][
+                        "value"
+                    ]
+                else:
+                    prompt = self.sharegpt_data["conversations"][2 * self.question_id][
+                        "value"
+                    ]
+            else:
+                prompt = self._build_new_question()
+            
+            # 计算max_tokens
+            if self.use_sharegpt:
+                if self.start_with_gpt:
+                    conversation_index = 2 * self.question_id
+                    if conversation_index < len(self.sharegpt_data["conversations"]):
+                        conversation = self.sharegpt_data["conversations"][conversation_index]
+                        max_tokens = conversation.get("num_tokens", self.user_config.answer_len)
+                    else:
+                        max_tokens = self.user_config.answer_len
+                else:
+                    conversation_index = 2 * self.question_id - 1
+                    if conversation_index < len(self.sharegpt_data["conversations"]):
+                        conversation = self.sharegpt_data["conversations"][conversation_index]
+                        max_tokens = conversation.get("num_tokens", self.user_config.answer_len)
+                    else:
+                        max_tokens = self.user_config.answer_len
+                max_tokens = min(max_tokens, self.user_config.answer_len)
+            else:
+                max_tokens = self.user_config.answer_len
+        
+        # 添加系统提示词（如果是第一轮）
         if len(self.chat_history) == 0:
             prompt = self._build_system_prompt() + prompt
+        
         self.chat_history.on_user_query(prompt)
         logger.debug(
             f"User {self.user_config.user_id} issues request {self.question_id}"
         )
+        
+        # 更新question_id
         if self.use_sharegpt:
-            if self.start_with_gpt:
-                # 当从GPT开始，我们需要获取GPT回复的num_tokens
-                conversation_index = 2 * self.question_id
-                if conversation_index < len(self.sharegpt_data["conversations"]):
-                    conversation = self.sharegpt_data["conversations"][conversation_index]
-                    max_tokens = conversation.get("num_tokens", self.user_config.answer_len)
-                else:
-                    max_tokens = self.user_config.answer_len
+            if self.user_config.batch_conversations > 1:
+                self.question_id += 1
             else:
-                # 当从人类开始，我们需要获取下一个GPT回复的num_tokens
-                conversation_index = 2 * self.question_id - 1
-                if conversation_index < len(self.sharegpt_data["conversations"]):
-                    conversation = self.sharegpt_data["conversations"][conversation_index]
-                    max_tokens = conversation.get("num_tokens", self.user_config.answer_len)
-                else:
-                    max_tokens = self.user_config.answer_len
-            max_tokens = min(max_tokens, self.user_config.answer_len)
+                self.question_id += 1
         else:
-            max_tokens = self.user_config.answer_len
-        # 在获取max_tokens之后再增加question_id
-        if self.use_sharegpt:
             self.question_id += 1
+            
         request_executor.launch_request(
             self.chat_history,
             max_tokens,
@@ -630,6 +703,12 @@ def parse_arguments() -> WorkloadConfig:
         action="store_true",
         help="Whether to use ShareGPT dataset",
     )
+    parser.add_argument(
+        "--batch-conversations",
+        type=int,
+        default=1,
+        help="Number of conversations to batch together in one request (default: 1)",
+    )
     args = parser.parse_args()
     return args
 
@@ -680,6 +759,7 @@ def main():
         qps=args.qps,
         model=args.model,
         enable_user_id=args.request_with_user_id,
+        batch_conversations=args.batch_conversations,
     )
 
     manager = UserSessionManager(

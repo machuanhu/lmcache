@@ -89,6 +89,8 @@ class NaiveDistributedServer(DistributedServerInterface):
         This function is blocking for now but should be non-blocking.
         """
         memory_obj = self.storage_manager.get(key)
+        if memory_obj is not None:
+            logger.debug(f"get kv cache success")
         return memory_obj
 
     def receive_all_client(
@@ -231,7 +233,7 @@ class NaiveDistributedServer(DistributedServerInterface):
                 match meta.command:
                     case Constants.CLIENT_GET:
                         t0 = time.perf_counter()
-
+                        logger.debug(f"handle_get start:{meta.key}")
                         memory_obj = await self.handle_get(meta.key)
 
                         t1 = time.perf_counter()
@@ -331,6 +333,7 @@ class NaiveDistributedServer(DistributedServerInterface):
         """
         Start the server.
         """
+        logger.debug(f"start server")
         server = await asyncio.start_server(self.handle_client, self.host, self.port)
         addr = server.sockets[0].getsockname()
         logger.info(f"Server started at {addr}")

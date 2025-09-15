@@ -275,11 +275,6 @@ class VLLMPagedMemGPUConnectorV2(GPUConnectorInterface):
 
         kv_cache_pointers = self._initialize_pointers(self.kvcaches)
 
-        # 确保memory_obj在GPU上
-        if memory_obj.tensor.device.type != "cuda":
-            logger.warning("Memory object is not on GPU, this should not happen with GPU storage backend")
-            # 将memory_obj移动到GPU
-
         with torch.cuda.stream(self.store_stream):
             if self.gpu_buffer is None or end - start != self.gpu_buffer.shape[2]:
                 # 直接GPU到GPU传输

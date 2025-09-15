@@ -15,6 +15,7 @@
 # Standard
 from collections import OrderedDict
 from concurrent.futures import Future
+from math import log
 from typing import (
     TYPE_CHECKING,
     Dict,
@@ -217,6 +218,7 @@ class StorageManager:
         # 优先从GPU存储后端获取数据
         if "GPUStorageBackend" in self.storage_backends:
             gpu_backend = self.storage_backends["GPUStorageBackend"]
+            logger.debug(f"gpu_backend.contains(key): {gpu_backend.contains(key)}")
             memory_obj = gpu_backend.get_blocking(key)
             if memory_obj is not None:
                 # GPU存储后端直接返回GPU内存，无需write-back

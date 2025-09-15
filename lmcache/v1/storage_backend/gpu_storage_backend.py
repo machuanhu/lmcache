@@ -249,20 +249,6 @@ class GPUStorageBackend(StorageBackendInterface):
         if memory_obj is not None or not eviction:
             return memory_obj
 
-        # 对于 GPU 内存分配器，我们需要手动处理驱逐
-        # 因为 GPU 内存分配器可能不支持自动驱逐
-        if isinstance(self.memory_allocator, GPUMemoryAllocator):
-            # GPU 内存分配器不支持驱逐，直接返回 None
-            logger.warning("GPU memory allocator does not support eviction")
-            return None
-        elif isinstance(self.memory_allocator, MixedMemoryAllocator):
-            # MixedMemoryAllocator 支持驱逐
-            pass
-        else:
-            # 其他类型的分配器不支持驱逐
-            logger.warning(f"Memory allocator {type(self.memory_allocator)} does not support eviction")
-            return None
-
         evict_keys = []
         with self.gpu_lock:
             for evict_key in self.hot_cache:
@@ -271,7 +257,10 @@ class GPUStorageBackend(StorageBackendInterface):
                 # might be used as buffers by other storage backends
                 # Also, don't evict pinned objects
                 if old_mem_obj.get_ref_count() > 1 or old_mem_obj.is_pinned:
+                    logger.debug(f"Skipping eviction of {evict_key} because {old_mem_obj.get_ref_count()} or {old_mem_obj.is_pinned}")
                     continue
+                else:
+                    logger.debug(f"Evicting")
                 evict_keys.append(evict_key)
 
                 old_mem_obj.ref_count_down()
@@ -279,10 +268,13 @@ class GPUStorageBackend(StorageBackendInterface):
                 logger.debug("Evicting 1 chunk from gpu memory")
                 if memory_obj is not None:
                     break
-        for evict_key in evict_keys:
-            # already freed above in order to allocate new memory object
-            # this is to remove the key from the hot cache
-            self.remove(evict_key, free_obj=False)
+            if memory_obj is None:
+                logger.debug("all is pin or ref_count > 1.")
+                return None
+            for evict_key in evict_keys:
+                # already freed above in order to allocate new memory object
+                # this is to remove the key from the hot cache
+                self.hot_cache.pop(evict_key)
         if self.lookup_server is not None:
             self.lookup_server.batched_remove(evict_keys)
         return memory_obj
