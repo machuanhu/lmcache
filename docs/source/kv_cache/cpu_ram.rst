@@ -40,7 +40,7 @@ Example ``config.yaml``:
     # 256 Tokens per KV Chunk
     chunk_size: 256
     # Enable CPU memory backend
-    local_cpu: true # default
+    local_cpu: false # default
     # 5GB of Pinned CPU memory
     max_local_cpu_size: 5.0 # default
 
@@ -120,7 +120,7 @@ Create a an lmcache configuration file called: ``cpu-offload.yaml``
 .. code-block:: yaml
 
     chunk_size: 256
-    local_cpu: true
+    local_cpu: false
     max_local_cpu_size: 5.0
 
 If you don't want to use a config file, uncomment the first three environment variables

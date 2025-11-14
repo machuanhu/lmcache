@@ -110,7 +110,7 @@ First, create a configuration file named ``lmcache_config.yaml`` with the follow
     chunk_size: 256
     
     # CPU offloading configurations
-    local_cpu: true
+    local_cpu: false
     max_local_cpu_size: 5.0  # 5GB CPU memory limit
     
 Next, launch the vLLM server with LMCache integration. Here's an example command:

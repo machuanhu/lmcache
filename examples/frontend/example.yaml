@@ -1,5 +1,5 @@
 chunk_size: 256
-local_cpu: True
+local_cpu: false
 remote_url: "lm://localhost:65432"
 remote_serde: "cachegen"
 

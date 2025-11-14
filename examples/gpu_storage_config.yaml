@@ -21,7 +21,7 @@ nvlink_target_addresses:  # 目标地址列表
 use_layerwise: false  # 是否使用分层流水线
 save_decode_cache: false  # 是否保存解码缓存
 enable_blending: false  # 是否启用混合
-enable_p2p: false  # 是否启用P2P共享
+enable_p2p: true  # 是否启用P2P共享
 error_handling: true  # 启用错误处理
 
 # 控制器配置

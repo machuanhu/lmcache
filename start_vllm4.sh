@@ -1,16 +1,18 @@
 PYTHONHASHSEED=0 \
 NCCL_SOCKET_IFNAME=eth0 \
 GLOO_SOCKET_IFNAME=eth0 \
-LMCACHE_RANK=0 \
+LMCACHE_RANK=3 \
 LMCACHE_WORLD_SIZE=8 \
 LMCACHE_LOG_LEVEL=DEBUG \
-CUDA_VISIBLE_DEVICES=0,1 \
+CUDA_VISIBLE_DEVICES=6,7 \
 NCCL_NVLINK_DISABLE=0 \
 NCCL_P2P_DISABLE=0 \
-LMCACHE_CONFIG_FILE=lmcache_config1.yaml \
+LMCACHE_CONFIG_FILE=lmcache_config4.yaml \
 vllm serve ~/meta-llama/Llama-2-13b-chat-hf \
     --max-model-len 4096\
     --tensor-parallel-size 2 \
-    --port 8000 \
-    > vllm1.log 2>&1
-    #--kv-transfer-config '{"kv_connector":"LMCacheConnectorV1", "kv_role":"kv_both"}' > vllm_cachehub1.log 2>&1
+    --port 8003 \
+    > vllm4.log 2>&1
+    #--kv-transfer-config '{"kv_connector":"LMCacheConnectorV1", "kv_role":"kv_both"}' > vllm_cachehub4.log 2>&1
+
+

@@ -26,7 +26,7 @@ Second, we need a yaml file ``example.yaml`` to properly configure the lmcache i
 .. code-block:: yaml
 
     chunk_size: 256
-    local_cpu: True
+    local_cpu: false
     max_local_cpu_size: 5
 
     # cache controller configurations

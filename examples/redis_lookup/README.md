@@ -31,7 +31,7 @@ Create a file `/tmp/lmcache-config.yaml` with Redis configuration:
 ```yaml
 # Basic LMCache settings
 chunk_size: 256
-local_cpu: True
+local_cpu: false
 max_local_cpu_size: 5
 
 # Redis connection

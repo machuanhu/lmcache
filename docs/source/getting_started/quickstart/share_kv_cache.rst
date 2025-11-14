@@ -34,7 +34,7 @@ First, create a configuration file named ``lmcache_config.yaml`` with the follow
 .. code-block:: yaml
 
     chunk_size: 256
-    local_cpu: true
+    local_cpu: false
     remote_url: "lm://localhost:65432"
     remote_serde: "cachegen"
     
@@ -116,7 +116,7 @@ Instance 1 configuration (``lmcache_config1.yaml``):
 .. code-block:: yaml
 
     chunk_size: 256
-    local_cpu: true
+    local_cpu: false
     max_local_cpu_size: 5
     
     # P2P configuration
@@ -129,7 +129,7 @@ Instance 2 configuration (``lmcache_config2.yaml``):
 .. code-block:: yaml
 
     chunk_size: 256
-    local_cpu: true
+    local_cpu: false
     max_local_cpu_size: 5
     
     # P2P configuration

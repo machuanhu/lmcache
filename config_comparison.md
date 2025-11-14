@@ -130,7 +130,7 @@ export LMCACHE_REMOTE_SERDE="torch"
 ```yaml
 # config.yaml
 chunk_size: 256
-local_cpu: true
+local_cpu: false
 max_local_cpu_size: 8.0
 enable_gpu_storage: true
 gpu_memory_gb: 5.0

@@ -2,5 +2,5 @@
 chunk_size: 64
 
 # CPU offloading configurations
-local_cpu: true
+local_cpu: false
 max_local_cpu_size: 60.0
