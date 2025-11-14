@@ -15,6 +15,7 @@
 # Standard
 from typing import Optional, Sequence, Tuple
 import inspect
+import time
 
 # Third Party
 import redis
@@ -50,46 +51,62 @@ class RedisLookupServer(LookupServerInterface):
         """
         Perform lookup in the lookup server.
         """
+        start_time = time.perf_counter()
         logger.debug(f"Call to lookup in lookup server for {key.to_string()}")
         url = self.connection.get(key.to_string())
         logger.debug(f"KV cache lives on {url}")
         assert not inspect.isawaitable(url)
+        elapsed = time.perf_counter() - start_time
         if url is None:
+            logger.debug(f"Redis lookup operation took {elapsed*1000:.2f}ms for key {key.to_string()} (not found)")
             return None
         host, port = url.split(":")
+        logger.debug(f"Redis lookup operation took {elapsed*1000:.2f}ms for key {key.to_string()}")
         return host, int(port)
 
     def insert(self, key: CacheEngineKey):
         """
         Perform insert in the lookup server.
         """
+        start_time = time.perf_counter()
         assert self.distributed_url is not None
         logger.debug("Call to insert in lookup server")
         self.connection.set(key.to_string(), self.distributed_url)
+        elapsed = time.perf_counter() - start_time
+        logger.debug(f"Redis insert operation took {elapsed*1000:.2f}ms for key {key.to_string()}")
 
     def batched_insert(self, keys: Sequence[CacheEngineKey]):
         """
         Perform batched insert in the lookup server.
         """
+        start_time = time.perf_counter()
         assert self.distributed_url is not None
         logger.debug("Call to batched insert in lookup server")
 
         # TODO(Jiayi): Optimize this with redis pipe
         for key in keys:
             self.connection.set(key.to_string(), self.distributed_url)
+        elapsed = time.perf_counter() - start_time
+        logger.debug(f"Redis batched_insert operation took {elapsed*1000:.2f}ms for {len(keys)} keys")
 
     def remove(self, key: CacheEngineKey):
         """
         Perform remove in the lookup server.
         """
+        start_time = time.perf_counter()
         logger.debug("Call to remove in lookup server")
         self.connection.delete(key.to_string())
+        elapsed = time.perf_counter() - start_time
+        logger.debug(f"Redis remove operation took {elapsed*1000:.2f}ms for key {key.to_string()}")
 
     def batched_remove(self, keys: Sequence[CacheEngineKey]):
         """
         Perform batched remove in the lookup server.
         """
+        start_time = time.perf_counter()
         logger.debug("Call to batched remove in lookup server")
         # TODO(Jiayi): We might need to cache the `str_keys` for performance.
         str_keys = [key.to_string() for key in keys]
         self.connection.delete(*str_keys)
+        elapsed = time.perf_counter() - start_time
+        logger.debug(f"Redis batched_remove operation took {elapsed*1000:.2f}ms for {len(keys)} keys")

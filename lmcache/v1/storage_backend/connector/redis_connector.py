@@ -17,6 +17,7 @@ from typing import List, Optional, Tuple, no_type_check
 import asyncio
 import inspect
 import os
+import time
 
 # Third Party
 import redis
@@ -53,13 +54,20 @@ class RedisConnector(RemoteConnector):
         self.local_cpu_backend = local_cpu_backend
 
     async def exists(self, key: CacheEngineKey) -> bool:
-        return bool(self.connection.exists(key.to_string() + "metadata"))
+        start_time = time.perf_counter()
+        result = bool(self.connection.exists(key.to_string() + "metadata"))
+        elapsed = time.perf_counter() - start_time
+        logger.debug(f"Redis exists operation took {elapsed*1000:.2f}ms for key {key.to_string()}")
+        return result
 
     async def get(self, key: CacheEngineKey) -> Optional[MemoryObj]:
+        start_time = time.perf_counter()
         key_str = key.to_string()
         metadata_bytes = self.connection.get(key_str + "metadata")
 
         if metadata_bytes is None:
+            elapsed = time.perf_counter() - start_time
+            logger.debug(f"Redis get operation took {elapsed*1000:.2f}ms for key {key_str} (not found)")
             return None
 
         assert not inspect.isawaitable(metadata_bytes)
@@ -73,6 +81,8 @@ class RedisConnector(RemoteConnector):
         )
         if memory_obj is None:
             logger.warning("Failed to allocate memory during remote receive")
+            elapsed = time.perf_counter() - start_time
+            logger.debug(f"Redis get operation took {elapsed*1000:.2f}ms for key {key_str} (allocation failed)")
             return None
 
         # TODO(Jiayi): Find a way to do `get` inplace
@@ -89,6 +99,8 @@ class RedisConnector(RemoteConnector):
                 "Might happen when the cache is evicted by redis."
             )
             self.connection.delete(key_str + "metadata")
+            elapsed = time.perf_counter() - start_time
+            logger.debug(f"Redis get operation took {elapsed*1000:.2f}ms for key {key_str} (kv_bytes not found)")
             return None
 
         if isinstance(memory_obj.byte_array, memoryview):
@@ -107,9 +119,12 @@ class RedisConnector(RemoteConnector):
             converted = bytes(kv_bytes)
             view[: metadata.length] = converted
 
+        elapsed = time.perf_counter() - start_time
+        logger.debug(f"Redis get operation took {elapsed*1000:.2f}ms for key {key_str}")
         return memory_obj
 
     async def put(self, key: CacheEngineKey, memory_obj: MemoryObj):
+        start_time = time.perf_counter()
         # TODO(Jiayi): The following code is ugly.
         # Please use a function like `memory_obj.to_meta()`.
         kv_bytes = memory_obj.byte_array
@@ -124,6 +139,8 @@ class RedisConnector(RemoteConnector):
         key_str = key.to_string()
         self.connection.set(key_str + "metadata", metadata_bytes)
         self.connection.set(key_str + "kv_bytes", kv_bytes)
+        elapsed = time.perf_counter() - start_time
+        logger.debug(f"Redis put operation took {elapsed*1000:.2f}ms for key {key_str}")
 
     # TODO
     @no_type_check
@@ -192,13 +209,20 @@ class RedisSentinelConnector(RemoteConnector):
         self.local_cpu_backend = local_cpu_backend
 
     async def exists(self, key: CacheEngineKey) -> bool:
-        return bool(self.slave.exists(key.to_string() + "metadata"))
+        start_time = time.perf_counter()
+        result = bool(self.slave.exists(key.to_string() + "metadata"))
+        elapsed = time.perf_counter() - start_time
+        logger.debug(f"Redis Sentinel exists operation took {elapsed*1000:.2f}ms for key {key.to_string()}")
+        return result
 
     async def get(self, key: CacheEngineKey) -> Optional[MemoryObj]:
+        start_time = time.perf_counter()
         key_str = key.to_string()
         metadata_bytes = self.slave.get(key_str + "metadata")
 
         if metadata_bytes is None:
+            elapsed = time.perf_counter() - start_time
+            logger.debug(f"Redis Sentinel get operation took {elapsed*1000:.2f}ms for key {key_str} (not found)")
             return None
 
         assert not inspect.isawaitable(metadata_bytes)
@@ -212,6 +236,8 @@ class RedisSentinelConnector(RemoteConnector):
         )
         if memory_obj is None:
             logger.warning("Failed to allocate memory during remote receive")
+            elapsed = time.perf_counter() - start_time
+            logger.debug(f"Redis Sentinel get operation took {elapsed*1000:.2f}ms for key {key_str} (allocation failed)")
             return None
 
         # TODO(Jiayi): Find a way to do `get` inplace
@@ -229,6 +255,8 @@ class RedisSentinelConnector(RemoteConnector):
                 "Might happen when the cache is evicted by redis."
             )
             self.master.delete(key_str + "metadata")
+            elapsed = time.perf_counter() - start_time
+            logger.debug(f"Redis Sentinel get operation took {elapsed*1000:.2f}ms for key {key_str} (kv_bytes not found)")
             return None
 
         if isinstance(memory_obj.byte_array, memoryview):
@@ -247,9 +275,12 @@ class RedisSentinelConnector(RemoteConnector):
             converted = bytes(kv_bytes)
             view[0 : metadata.length] = converted
 
+        elapsed = time.perf_counter() - start_time
+        logger.debug(f"Redis Sentinel get operation took {elapsed*1000:.2f}ms for key {key_str}")
         return memory_obj
 
     async def put(self, key: CacheEngineKey, memory_obj: MemoryObj):
+        start_time = time.perf_counter()
         # TODO(Jiayi): The following code is ugly.
         # Please use a function like `memory_obj.to_meta()`.
         kv_bytes = memory_obj.byte_array
@@ -266,6 +297,8 @@ class RedisSentinelConnector(RemoteConnector):
         self.master.set(key_str + "kv_bytes", kv_bytes)
 
         memory_obj.ref_count_down()
+        elapsed = time.perf_counter() - start_time
+        logger.debug(f"Redis Sentinel put operation took {elapsed*1000:.2f}ms for key {key_str}")
 
     # TODO
     @no_type_check
