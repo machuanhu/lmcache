@@ -118,6 +118,5 @@ lmcache/experimental/tests
 /csrc/*_hip.cpp
 
 # Ignore all log files
-*.log
 
 /benchmarks/multi-round-qa/ShareGPT*

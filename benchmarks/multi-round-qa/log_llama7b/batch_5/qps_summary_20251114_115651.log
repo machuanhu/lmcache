@@ -1,0 +1,186 @@
+================ QPS 8 ================
+==================== Performance summary ======================
+  Total launched requests: 104
+
+  Total finished requests: 104
+
+  Target QPS (configured): 8.0000 reqs/s
+
+  Actual QPS (measured): 4.8689 reqs/s
+
+  Processing speed: 4.8689 reqs/s
+
+  Requests on-the-fly: 0
+
+  Input tokens per second: 3708.1441 tokens/s
+
+  Output tokens per second: 458.0990 tokens/s
+
+  Average generation throughput (per request): 54.7207 tokens/req/s
+
+  Average TTFT: 0.1295s
+
+  Average prompt tokens per request: 761.60 tokens
+
+  Average generation tokens per request: 94.09 tokens
+
+  Average total tokens per request: 855.68 tokens
+
+Time range: 1763121654.94 - 1763121676.30 (21.36s)
+===============================================================
+
+================ QPS 16 ================
+==================== Performance summary ======================
+  Total launched requests: 198
+
+  Total finished requests: 198
+
+  Target QPS (configured): 16.0000 reqs/s
+
+  Actual QPS (measured): 9.1071 reqs/s
+
+  Processing speed: 9.1071 reqs/s
+
+  Requests on-the-fly: 0
+
+  Input tokens per second: 7160.9584 tokens/s
+
+  Output tokens per second: 894.1482 tokens/s
+
+  Average generation throughput (per request): 49.9493 tokens/req/s
+
+  Average TTFT: 0.1435s
+
+  Average prompt tokens per request: 786.31 tokens
+
+  Average generation tokens per request: 98.18 tokens
+
+  Average total tokens per request: 884.49 tokens
+
+Time range: 1763121691.10 - 1763121712.84 (21.74s)
+===============================================================
+
+================ QPS 32 ================
+==================== Performance summary ======================
+  Total launched requests: 363
+
+  Total finished requests: 363
+
+  Target QPS (configured): 32.0000 reqs/s
+
+  Actual QPS (measured): 15.8874 reqs/s
+
+  Processing speed: 15.8874 reqs/s
+
+  Requests on-the-fly: 0
+
+  Input tokens per second: 12683.9599 tokens/s
+
+  Output tokens per second: 1560.5971 tokens/s
+
+  Average generation throughput (per request): 39.1788 tokens/req/s
+
+  Average TTFT: 0.2205s
+
+  Average prompt tokens per request: 798.37 tokens
+
+  Average generation tokens per request: 98.23 tokens
+
+  Average total tokens per request: 896.60 tokens
+
+Time range: 1763121726.73 - 1763121749.58 (22.85s)
+===============================================================
+
+================ QPS 48 ================
+==================== Performance summary ======================
+  Total launched requests: 550
+
+  Total finished requests: 550
+
+  Target QPS (configured): 48.0000 reqs/s
+
+  Actual QPS (measured): 21.4732 reqs/s
+
+  Processing speed: 21.4732 reqs/s
+
+  Requests on-the-fly: 0
+
+  Input tokens per second: 16973.6874 tokens/s
+
+  Output tokens per second: 2131.5837 tokens/s
+
+  Average generation throughput (per request): 30.6642 tokens/req/s
+
+  Average TTFT: 1.5429s
+
+  Average prompt tokens per request: 790.46 tokens
+
+  Average generation tokens per request: 99.27 tokens
+
+  Average total tokens per request: 889.73 tokens
+
+Time range: 1763121762.72 - 1763121788.34 (25.61s)
+===============================================================
+
+================ QPS 64 ================
+==================== Performance summary ======================
+  Total launched requests: 661
+
+  Total finished requests: 661
+
+  Target QPS (configured): 64.0000 reqs/s
+
+  Actual QPS (measured): 20.6553 reqs/s
+
+  Processing speed: 20.6553 reqs/s
+
+  Requests on-the-fly: 0
+
+  Input tokens per second: 17734.4163 tokens/s
+
+  Output tokens per second: 2060.3443 tokens/s
+
+  Average generation throughput (per request): 27.9475 tokens/req/s
+
+  Average TTFT: 3.2318s
+
+  Average prompt tokens per request: 858.59 tokens
+
+  Average generation tokens per request: 99.75 tokens
+
+  Average total tokens per request: 958.34 tokens
+
+Time range: 1763121801.53 - 1763121833.54 (32.00s)
+===============================================================
+
+================ QPS 80 ================
+==================== Performance summary ======================
+  Total launched requests: 737
+
+  Total finished requests: 737
+
+  Target QPS (configured): 80.0000 reqs/s
+
+  Actual QPS (measured): 19.4470 reqs/s
+
+  Processing speed: 19.4470 reqs/s
+
+  Requests on-the-fly: 0
+
+  Input tokens per second: 17758.4177 tokens/s
+
+  Output tokens per second: 1938.3681 tokens/s
+
+  Average generation throughput (per request): 26.4954 tokens/req/s
+
+  Average TTFT: 4.7605s
+
+  Average prompt tokens per request: 913.17 tokens
+
+  Average generation tokens per request: 99.67 tokens
+
+  Average total tokens per request: 1012.84 tokens
+
+Time range: 1763121847.27 - 1763121885.17 (37.90s)
+===============================================================
+
